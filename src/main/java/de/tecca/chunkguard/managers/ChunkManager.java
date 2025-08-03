@@ -8,10 +8,7 @@ import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 
-import java.util.Map;
-import java.util.UUID;
-import java.util.List;
-import java.util.ArrayList;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
@@ -254,6 +251,15 @@ public class ChunkManager {
             lp.revokeAllChunkPermissions(trusted, chunkData.getWorldName(),
                     chunkData.getChunkX(), chunkData.getChunkZ());
         }
+    }
+
+    public Collection<ChunkData> getAllChunks() {
+        return new ArrayList<>(claimedChunks.values());
+    }
+
+    public void removeChunkFromCache(ChunkData chunkData) {
+        String chunkKey = getChunkKey(chunkData.getWorldName(), chunkData.getChunkX(), chunkData.getChunkZ());
+        claimedChunks.remove(chunkKey);
     }
 
     /**

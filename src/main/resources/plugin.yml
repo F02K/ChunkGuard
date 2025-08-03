@@ -37,6 +37,12 @@ commands:
     usage: /chunkgui
     permission: chunkguard.use
 
+  cgadmin:
+    description: ChunkGuard admin command
+    aliases: [ chunkguardadmin, cga ]
+    usage: /<command> [subcommand]
+    permission: chunkguard.admin
+
 permissions:
   chunkguard.*:
     description: All ChunkGuard permissions

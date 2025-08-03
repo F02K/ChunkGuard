@@ -12,7 +12,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
 
 /**
- * Manages database operations for chunk data
+ * Manages database operations for chunk data with improved trust permissions storage
  */
 public class DatabaseManager {
 
@@ -132,30 +132,132 @@ public class DatabaseManager {
                             "UNIQUE(world_name, chunk_x, chunk_z)" +
                             ")";
 
-            // Trusted players table
+            // Updated trusted players table for granular permissions
             String createTrustedTable = isMySQL ?
                     "CREATE TABLE IF NOT EXISTS chunk_trusted (" +
                             "id INT AUTO_INCREMENT PRIMARY KEY," +
                             "chunk_id INT NOT NULL," +
                             "player_uuid VARCHAR(36) NOT NULL," +
-                            "trust_level ENUM('ACCESS', 'CONTAINER', 'BUILD') NOT NULL," +
+                            "permission_type VARCHAR(50) NOT NULL," +
+                            "enabled BOOLEAN DEFAULT TRUE," +
                             "FOREIGN KEY (chunk_id) REFERENCES chunks(id) ON DELETE CASCADE," +
-                            "UNIQUE KEY unique_trust (chunk_id, player_uuid, trust_level)" +
+                            "UNIQUE KEY unique_permission (chunk_id, player_uuid, permission_type)" +
                             ")" :
                     "CREATE TABLE IF NOT EXISTS chunk_trusted (" +
                             "id INTEGER PRIMARY KEY AUTOINCREMENT," +
                             "chunk_id INTEGER NOT NULL," +
                             "player_uuid TEXT NOT NULL," +
-                            "trust_level TEXT NOT NULL," +
+                            "permission_type TEXT NOT NULL," +
+                            "enabled BOOLEAN DEFAULT 1," +
                             "FOREIGN KEY (chunk_id) REFERENCES chunks(id) ON DELETE CASCADE," +
-                            "UNIQUE(chunk_id, player_uuid, trust_level)" +
+                            "UNIQUE(chunk_id, player_uuid, permission_type)" +
                             ")";
 
             try (Statement statement = connection.createStatement()) {
                 statement.execute(createChunksTable);
                 statement.execute(createTrustedTable);
             }
+
+            // Migrate old trust system if needed
+            migrateOldTrustSystem(connection);
         }
+    }
+
+    /**
+     * Migrates old trust system to new granular permissions
+     */
+    private void migrateOldTrustSystem(Connection connection) throws SQLException {
+        // Check if old trust_level column exists
+        String checkColumn = isMySQL ?
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'chunk_trusted' AND COLUMN_NAME = 'trust_level'" :
+                "PRAGMA table_info(chunk_trusted)";
+
+        boolean hasOldSystem = false;
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery(checkColumn)) {
+
+            if (isMySQL) {
+                if (rs.next() && rs.getInt(1) > 0) {
+                    hasOldSystem = true;
+                }
+            } else {
+                while (rs.next()) {
+                    if ("trust_level".equals(rs.getString("name"))) {
+                        hasOldSystem = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (hasOldSystem) {
+            plugin.getLogger().info("Migrating old trust system to new granular permissions...");
+
+            // Read old trust data
+            String selectOldTrust = "SELECT chunk_id, player_uuid, trust_level FROM chunk_trusted WHERE trust_level IS NOT NULL";
+            List<OldTrustData> oldTrustData = new ArrayList<>();
+
+            try (Statement stmt = connection.createStatement();
+                 ResultSet rs = stmt.executeQuery(selectOldTrust)) {
+                while (rs.next()) {
+                    oldTrustData.add(new OldTrustData(
+                            rs.getInt("chunk_id"),
+                            rs.getString("player_uuid"),
+                            rs.getString("trust_level")
+                    ));
+                }
+            }
+
+            // Clear old data
+            try (Statement stmt = connection.createStatement()) {
+                stmt.execute("DELETE FROM chunk_trusted");
+            }
+
+            // Insert new granular permissions
+            String insertPermission = "INSERT INTO chunk_trusted (chunk_id, player_uuid, permission_type, enabled) VALUES (?, ?, ?, ?)";
+            try (PreparedStatement stmt = connection.prepareStatement(insertPermission)) {
+                for (OldTrustData data : oldTrustData) {
+                    TrustPermissions.PermissionTemplate template = mapOldTrustLevel(data.trustLevel);
+                    UUID playerUuid = UUID.fromString(data.playerUuid);
+
+                    TrustPermissions permissions = new TrustPermissions(playerUuid);
+                    permissions.applyTemplate(template);
+
+                    for (Map.Entry<TrustPermissions.PermissionType, Boolean> entry : permissions.getAllPermissions().entrySet()) {
+                        if (entry.getValue()) {
+                            stmt.setInt(1, data.chunkId);
+                            stmt.setString(2, data.playerUuid);
+                            stmt.setString(3, entry.getKey().name());
+                            stmt.setBoolean(4, true);
+                            stmt.addBatch();
+                        }
+                    }
+                }
+                stmt.executeBatch();
+            }
+
+            plugin.getLogger().info("Migration completed successfully!");
+        }
+    }
+
+    private static class OldTrustData {
+        final int chunkId;
+        final String playerUuid;
+        final String trustLevel;
+
+        OldTrustData(int chunkId, String playerUuid, String trustLevel) {
+            this.chunkId = chunkId;
+            this.playerUuid = playerUuid;
+            this.trustLevel = trustLevel;
+        }
+    }
+
+    private TrustPermissions.PermissionTemplate mapOldTrustLevel(String trustLevel) {
+        return switch (trustLevel.toUpperCase()) {
+            case "BUILD" -> TrustPermissions.PermissionTemplate.BUILDER;
+            case "CONTAINER" -> TrustPermissions.PermissionTemplate.FRIEND;
+            default -> TrustPermissions.PermissionTemplate.VISITOR;
+        };
     }
 
     /**
@@ -166,63 +268,62 @@ public class DatabaseManager {
                 "pvp_enabled, mob_spawning_enabled, explosions_enabled, fire_spread_enabled) " +
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-        try (Connection connection = getConnection();
-             PreparedStatement statement = connection.prepareStatement(insertChunk, Statement.RETURN_GENERATED_KEYS)) {
+        try (Connection connection = getConnection()) {
+            connection.setAutoCommit(false);
 
-            statement.setString(1, chunkData.getWorldName());
-            statement.setInt(2, chunkData.getChunkX());
-            statement.setInt(3, chunkData.getChunkZ());
-            statement.setString(4, chunkData.getOwner().toString());
-            statement.setTimestamp(5, Timestamp.valueOf(chunkData.getClaimedAt()));
-            statement.setTimestamp(6, Timestamp.valueOf(chunkData.getLastAccessed()));
-            statement.setBoolean(7, chunkData.isPvpEnabled());
-            statement.setBoolean(8, chunkData.isMobSpawningEnabled());
-            statement.setBoolean(9, chunkData.isExplosionsEnabled());
-            statement.setBoolean(10, chunkData.isFireSpreadEnabled());
+            int chunkId;
+            try (PreparedStatement statement = connection.prepareStatement(insertChunk, Statement.RETURN_GENERATED_KEYS)) {
+                statement.setString(1, chunkData.getWorldName());
+                statement.setInt(2, chunkData.getChunkX());
+                statement.setInt(3, chunkData.getChunkZ());
+                statement.setString(4, chunkData.getOwner().toString());
+                statement.setTimestamp(5, Timestamp.valueOf(chunkData.getClaimedAt()));
+                statement.setTimestamp(6, Timestamp.valueOf(chunkData.getLastAccessed()));
+                statement.setBoolean(7, chunkData.isPvpEnabled());
+                statement.setBoolean(8, chunkData.isMobSpawningEnabled());
+                statement.setBoolean(9, chunkData.isExplosionsEnabled());
+                statement.setBoolean(10, chunkData.isFireSpreadEnabled());
 
-            statement.executeUpdate();
+                statement.executeUpdate();
 
-            // Get generated chunk ID
-            try (ResultSet generatedKeys = statement.getGeneratedKeys()) {
-                if (generatedKeys.next()) {
-                    int chunkId = generatedKeys.getInt(1);
-                    saveTrustedPlayers(connection, chunkId, chunkData);
+                // Get generated chunk ID
+                try (ResultSet generatedKeys = statement.getGeneratedKeys()) {
+                    if (generatedKeys.next()) {
+                        chunkId = generatedKeys.getInt(1);
+                    } else {
+                        throw new SQLException("Failed to get generated chunk ID");
+                    }
                 }
             }
+
+            // Save trusted players with granular permissions
+            saveTrustedPermissions(connection, chunkId, chunkData);
+
+            connection.commit();
         }
     }
 
     /**
-     * Saves trusted players for a chunk
+     * Saves trusted players with their granular permissions
      */
-    private void saveTrustedPlayers(Connection connection, int chunkId, ChunkData chunkData) throws SQLException {
-        String insertTrusted = "INSERT INTO chunk_trusted (chunk_id, player_uuid, trust_level) VALUES (?, ?, ?)";
+    private void saveTrustedPermissions(Connection connection, int chunkId, ChunkData chunkData) throws SQLException {
+        String insertPermission = "INSERT INTO chunk_trusted (chunk_id, player_uuid, permission_type, enabled) VALUES (?, ?, ?, ?)";
 
-        try (PreparedStatement statement = connection.prepareStatement(insertTrusted)) {
-            // Save builders
-            for (UUID uuid : chunkData.getTrustedBuilders()) {
-                statement.setInt(1, chunkId);
-                statement.setString(2, uuid.toString());
-                statement.setString(3, "BUILD");
-                statement.addBatch();
+        try (PreparedStatement statement = connection.prepareStatement(insertPermission)) {
+            for (Map.Entry<UUID, TrustPermissions> entry : chunkData.getAllTrustedPlayers().entrySet()) {
+                UUID playerUuid = entry.getKey();
+                TrustPermissions permissions = entry.getValue();
+
+                for (Map.Entry<TrustPermissions.PermissionType, Boolean> permEntry : permissions.getAllPermissions().entrySet()) {
+                    if (permEntry.getValue()) { // Only store enabled permissions
+                        statement.setInt(1, chunkId);
+                        statement.setString(2, playerUuid.toString());
+                        statement.setString(3, permEntry.getKey().name());
+                        statement.setBoolean(4, true);
+                        statement.addBatch();
+                    }
+                }
             }
-
-            // Save container access
-            for (UUID uuid : chunkData.getTrustedContainers()) {
-                statement.setInt(1, chunkId);
-                statement.setString(2, uuid.toString());
-                statement.setString(3, "CONTAINER");
-                statement.addBatch();
-            }
-
-            // Save basic access
-            for (UUID uuid : chunkData.getTrustedAccessors()) {
-                statement.setInt(1, chunkId);
-                statement.setString(2, uuid.toString());
-                statement.setString(3, "ACCESS");
-                statement.addBatch();
-            }
-
             statement.executeBatch();
         }
     }
@@ -264,36 +365,42 @@ public class DatabaseManager {
         boolean explosionsEnabled = resultSet.getBoolean("explosions_enabled");
         boolean fireSpreadEnabled = resultSet.getBoolean("fire_spread_enabled");
 
-        // Load trusted players
-        Set<UUID> trustedBuilders = new HashSet<>();
-        Set<UUID> trustedContainers = new HashSet<>();
-        Set<UUID> trustedAccessors = new HashSet<>();
+        // Load trusted players with granular permissions
+        Map<UUID, TrustPermissions> trustedPlayers = loadTrustedPermissions(connection, chunkId);
 
-        String selectTrusted = "SELECT player_uuid, trust_level FROM chunk_trusted WHERE chunk_id = ?";
-        try (PreparedStatement statement = connection.prepareStatement(selectTrusted)) {
+        return new ChunkData(worldName, chunkX, chunkZ, owner, claimedAt, lastAccessed,
+                trustedPlayers, pvpEnabled, mobSpawningEnabled, explosionsEnabled, fireSpreadEnabled);
+    }
+
+    /**
+     * Loads trusted permissions for a chunk
+     */
+    private Map<UUID, TrustPermissions> loadTrustedPermissions(Connection connection, int chunkId) throws SQLException {
+        Map<UUID, TrustPermissions> trustedPlayers = new HashMap<>();
+
+        String selectPermissions = "SELECT player_uuid, permission_type, enabled FROM chunk_trusted WHERE chunk_id = ?";
+        try (PreparedStatement statement = connection.prepareStatement(selectPermissions)) {
             statement.setInt(1, chunkId);
 
-            try (ResultSet trustedSet = statement.executeQuery()) {
-                while (trustedSet.next()) {
-                    UUID playerUuid = UUID.fromString(trustedSet.getString("player_uuid"));
-                    String trustLevel = trustedSet.getString("trust_level");
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    UUID playerUuid = UUID.fromString(resultSet.getString("player_uuid"));
+                    String permissionType = resultSet.getString("permission_type");
+                    boolean enabled = resultSet.getBoolean("enabled");
 
-                    switch (trustLevel) {
-                        case "BUILD":
-                            trustedBuilders.add(playerUuid);
-                            break;
-                        case "CONTAINER":
-                            trustedContainers.add(playerUuid);
-                            break;
-                        case "ACCESS":
-                            trustedAccessors.add(playerUuid);
-                            break;
+                    TrustPermissions permissions = trustedPlayers.computeIfAbsent(playerUuid, TrustPermissions::new);
+
+                    try {
+                        TrustPermissions.PermissionType permType = TrustPermissions.PermissionType.valueOf(permissionType);
+                        permissions.setPermission(permType, enabled);
+                    } catch (IllegalArgumentException e) {
+                        plugin.getLogger().warning("Unknown permission type in database: " + permissionType);
                     }
                 }
             }
         }
 
-        return new ChunkData(worldName, chunkX, chunkZ, owner);
+        return trustedPlayers;
     }
 
     /**
@@ -309,7 +416,10 @@ public class DatabaseManager {
             statement.setInt(2, chunkData.getChunkX());
             statement.setInt(3, chunkData.getChunkZ());
 
-            statement.executeUpdate();
+            int affected = statement.executeUpdate();
+            if (affected == 0) {
+                throw new SQLException("No chunk found to delete");
+            }
         }
     }
 
@@ -317,13 +427,13 @@ public class DatabaseManager {
      * Updates chunk data in the database
      */
     public void updateChunk(ChunkData chunkData) throws SQLException {
-        // First update the main chunk record
-        String updateChunk = "UPDATE chunks SET last_accessed = ?, pvp_enabled = ?, " +
-                "mob_spawning_enabled = ?, explosions_enabled = ?, fire_spread_enabled = ? " +
-                "WHERE world_name = ? AND chunk_x = ? AND chunk_z = ?";
-
         try (Connection connection = getConnection()) {
             connection.setAutoCommit(false);
+
+            // Update main chunk record
+            String updateChunk = "UPDATE chunks SET last_accessed = ?, pvp_enabled = ?, " +
+                    "mob_spawning_enabled = ?, explosions_enabled = ?, fire_spread_enabled = ? " +
+                    "WHERE world_name = ? AND chunk_x = ? AND chunk_z = ?";
 
             try (PreparedStatement statement = connection.prepareStatement(updateChunk)) {
                 statement.setTimestamp(1, Timestamp.valueOf(chunkData.getLastAccessed()));
@@ -335,42 +445,46 @@ public class DatabaseManager {
                 statement.setInt(7, chunkData.getChunkX());
                 statement.setInt(8, chunkData.getChunkZ());
 
-                statement.executeUpdate();
-            }
-
-            // Get chunk ID for trusted players update
-            String getChunkId = "SELECT id FROM chunks WHERE world_name = ? AND chunk_x = ? AND chunk_z = ?";
-            int chunkId;
-            try (PreparedStatement statement = connection.prepareStatement(getChunkId)) {
-                statement.setString(1, chunkData.getWorldName());
-                statement.setInt(2, chunkData.getChunkX());
-                statement.setInt(3, chunkData.getChunkZ());
-
-                try (ResultSet resultSet = statement.executeQuery()) {
-                    if (resultSet.next()) {
-                        chunkId = resultSet.getInt("id");
-                    } else {
-                        throw new SQLException("Chunk not found in database");
-                    }
+                int affected = statement.executeUpdate();
+                if (affected == 0) {
+                    throw new SQLException("No chunk found to update");
                 }
             }
 
-            // Delete existing trusted players
+            // Get chunk ID for trusted players update
+            int chunkId = getChunkId(connection, chunkData);
+
+            // Delete existing trusted permissions
             String deleteTrusted = "DELETE FROM chunk_trusted WHERE chunk_id = ?";
             try (PreparedStatement statement = connection.prepareStatement(deleteTrusted)) {
                 statement.setInt(1, chunkId);
                 statement.executeUpdate();
             }
 
-            // Re-insert trusted players
-            saveTrustedPlayers(connection, chunkId, chunkData);
+            // Re-insert trusted permissions
+            saveTrustedPermissions(connection, chunkId, chunkData);
 
             connection.commit();
-        } catch (SQLException e) {
-            try (Connection connection = getConnection()) {
-                connection.rollback();
+        }
+    }
+
+    /**
+     * Gets the database ID for a chunk
+     */
+    private int getChunkId(Connection connection, ChunkData chunkData) throws SQLException {
+        String getChunkId = "SELECT id FROM chunks WHERE world_name = ? AND chunk_x = ? AND chunk_z = ?";
+        try (PreparedStatement statement = connection.prepareStatement(getChunkId)) {
+            statement.setString(1, chunkData.getWorldName());
+            statement.setInt(2, chunkData.getChunkX());
+            statement.setInt(3, chunkData.getChunkZ());
+
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (resultSet.next()) {
+                    return resultSet.getInt("id");
+                } else {
+                    throw new SQLException("Chunk not found in database");
+                }
             }
-            throw e;
         }
     }
 

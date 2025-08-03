@@ -5,6 +5,8 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Represents a claimed chunk with all its associated data
@@ -131,74 +133,164 @@ public class ChunkData {
     }
 
     /**
-     * Legacy compatibility methods - deprecated but kept for backwards compatibility
+     * Legacy compatibility methods - updated to work with new permission system
      */
-    @Deprecated
     public boolean canBuild(UUID playerUuid) {
+        // Owner can always build
+        if (owner.equals(playerUuid)) {
+            return true;
+        }
+
+        // Check if player has either break or place block permissions
         return hasPermission(playerUuid, TrustPermissions.PermissionType.BREAK_BLOCKS) ||
                 hasPermission(playerUuid, TrustPermissions.PermissionType.PLACE_BLOCKS);
     }
 
-    @Deprecated
     public boolean canAccessContainers(UUID playerUuid) {
+        // Owner can always access containers
+        if (owner.equals(playerUuid)) {
+            return true;
+        }
+
+        // Check if player has any container-related permissions
         return hasPermission(playerUuid, TrustPermissions.PermissionType.OPEN_CHESTS) ||
-                hasPermission(playerUuid, TrustPermissions.PermissionType.OPEN_FURNACES);
+                hasPermission(playerUuid, TrustPermissions.PermissionType.OPEN_FURNACES) ||
+                hasPermission(playerUuid, TrustPermissions.PermissionType.OPEN_CRAFTING) ||
+                hasPermission(playerUuid, TrustPermissions.PermissionType.OPEN_ENCHANTING) ||
+                hasPermission(playerUuid, TrustPermissions.PermissionType.OPEN_BREWING);
     }
 
-    @Deprecated
     public boolean canAccess(UUID playerUuid) {
+        // Owner can always access
+        if (owner.equals(playerUuid)) {
+            return true;
+        }
+
+        // Check if player has any basic access permissions
         return isTrusted(playerUuid);
     }
 
-    // Legacy trust management - now adds permissions via templates
-    @Deprecated
     public void addTrustedBuilder(UUID playerUuid) {
-        TrustPermissions perms = new TrustPermissions(playerUuid);
+        TrustPermissions perms = trustedPlayers.get(playerUuid);
+        if (perms == null) {
+            perms = new TrustPermissions(playerUuid);
+        }
         perms.applyTemplate(TrustPermissions.PermissionTemplate.BUILDER);
         setTrustedPlayer(playerUuid, perms);
     }
 
-    @Deprecated
     public void addTrustedContainer(UUID playerUuid) {
-        TrustPermissions perms = new TrustPermissions(playerUuid);
+        TrustPermissions perms = trustedPlayers.get(playerUuid);
+        if (perms == null) {
+            perms = new TrustPermissions(playerUuid);
+        }
         perms.applyTemplate(TrustPermissions.PermissionTemplate.FRIEND);
         setTrustedPlayer(playerUuid, perms);
     }
 
-    @Deprecated
     public void addTrustedAccessor(UUID playerUuid) {
-        TrustPermissions perms = new TrustPermissions(playerUuid);
+        TrustPermissions perms = trustedPlayers.get(playerUuid);
+        if (perms == null) {
+            perms = new TrustPermissions(playerUuid);
+        }
         perms.applyTemplate(TrustPermissions.PermissionTemplate.VISITOR);
         setTrustedPlayer(playerUuid, perms);
     }
 
-    // Legacy getters - return players with specific template permissions
-    @Deprecated
-    public java.util.Set<UUID> getTrustedBuilders() {
-        return trustedPlayers.entrySet().stream()
-                .filter(entry -> entry.getValue().hasPermission(TrustPermissions.PermissionType.BREAK_BLOCKS) &&
-                        entry.getValue().hasPermission(TrustPermissions.PermissionType.PLACE_BLOCKS))
-                .map(Map.Entry::getKey)
-                .collect(java.util.stream.Collectors.toSet());
+    public void removeTrustedBuilder(UUID playerUuid) {
+        TrustPermissions perms = trustedPlayers.get(playerUuid);
+        if (perms != null) {
+            // Remove building permissions but keep other permissions
+            perms.setPermission(TrustPermissions.PermissionType.BREAK_BLOCKS, false);
+            perms.setPermission(TrustPermissions.PermissionType.PLACE_BLOCKS, false);
+
+            // If player has no permissions left, remove them entirely
+            if (perms.getEnabledPermissionCount() == 0) {
+                removeTrust(playerUuid);
+            } else {
+                setTrustedPlayer(playerUuid, perms);
+            }
+        }
     }
 
-    @Deprecated
-    public java.util.Set<UUID> getTrustedContainers() {
-        return trustedPlayers.entrySet().stream()
-                .filter(entry -> entry.getValue().hasPermission(TrustPermissions.PermissionType.OPEN_CHESTS) &&
-                        !entry.getValue().hasPermission(TrustPermissions.PermissionType.BREAK_BLOCKS))
-                .map(Map.Entry::getKey)
-                .collect(java.util.stream.Collectors.toSet());
+    public void removeTrustedContainer(UUID playerUuid) {
+        TrustPermissions perms = trustedPlayers.get(playerUuid);
+        if (perms != null) {
+            // Remove container permissions but keep other permissions
+            perms.setPermission(TrustPermissions.PermissionType.OPEN_CHESTS, false);
+            perms.setPermission(TrustPermissions.PermissionType.OPEN_FURNACES, false);
+            perms.setPermission(TrustPermissions.PermissionType.OPEN_CRAFTING, false);
+            perms.setPermission(TrustPermissions.PermissionType.OPEN_ENCHANTING, false);
+            perms.setPermission(TrustPermissions.PermissionType.OPEN_BREWING, false);
+
+            // If player has no permissions left, remove them entirely
+            if (perms.getEnabledPermissionCount() == 0) {
+                removeTrust(playerUuid);
+            } else {
+                setTrustedPlayer(playerUuid, perms);
+            }
+        }
     }
 
-    @Deprecated
-    public java.util.Set<UUID> getTrustedAccessors() {
+    public void removeTrustedAccessor(UUID playerUuid) {
+        // For accessor removal, we remove all basic access permissions
+        TrustPermissions perms = trustedPlayers.get(playerUuid);
+        if (perms != null) {
+            // Remove basic access permissions
+            perms.setPermission(TrustPermissions.PermissionType.USE_DOORS, false);
+            perms.setPermission(TrustPermissions.PermissionType.USE_BUTTONS, false);
+            perms.setPermission(TrustPermissions.PermissionType.ITEM_PICKUP, false);
+
+            // If player has no permissions left, remove them entirely
+            if (perms.getEnabledPermissionCount() == 0) {
+                removeTrust(playerUuid);
+            } else {
+                setTrustedPlayer(playerUuid, perms);
+            }
+        }
+    }
+
+    public Set<UUID> getTrustedBuilders() {
         return trustedPlayers.entrySet().stream()
-                .filter(entry -> entry.getValue().getEnabledPermissionCount() > 0 &&
-                        !entry.getValue().hasPermission(TrustPermissions.PermissionType.OPEN_CHESTS) &&
-                        !entry.getValue().hasPermission(TrustPermissions.PermissionType.BREAK_BLOCKS))
+                .filter(entry -> {
+                    TrustPermissions perms = entry.getValue();
+                    // Consider someone a "builder" if they can both break and place blocks
+                    return perms.hasPermission(TrustPermissions.PermissionType.BREAK_BLOCKS) &&
+                            perms.hasPermission(TrustPermissions.PermissionType.PLACE_BLOCKS);
+                })
                 .map(Map.Entry::getKey)
-                .collect(java.util.stream.Collectors.toSet());
+                .collect(Collectors.toSet());
+    }
+
+    public Set<UUID> getTrustedContainers() {
+        return trustedPlayers.entrySet().stream()
+                .filter(entry -> {
+                    TrustPermissions perms = entry.getValue();
+                    // Consider someone a "container user" if they can access containers but can't build
+                    boolean canAccessContainers = perms.hasPermission(TrustPermissions.PermissionType.OPEN_CHESTS) ||
+                            perms.hasPermission(TrustPermissions.PermissionType.OPEN_FURNACES);
+                    boolean canBuild = perms.hasPermission(TrustPermissions.PermissionType.BREAK_BLOCKS) &&
+                            perms.hasPermission(TrustPermissions.PermissionType.PLACE_BLOCKS);
+                    return canAccessContainers && !canBuild;
+                })
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toSet());
+    }
+
+    public Set<UUID> getTrustedAccessors() {
+        return trustedPlayers.entrySet().stream()
+                .filter(entry -> {
+                    TrustPermissions perms = entry.getValue();
+                    // Consider someone an "accessor" if they have basic permissions but can't access containers or build
+                    boolean hasBasicAccess = perms.getEnabledPermissionCount() > 0;
+                    boolean canAccessContainers = perms.hasPermission(TrustPermissions.PermissionType.OPEN_CHESTS) ||
+                            perms.hasPermission(TrustPermissions.PermissionType.OPEN_FURNACES);
+                    boolean canBuild = perms.hasPermission(TrustPermissions.PermissionType.BREAK_BLOCKS) &&
+                            perms.hasPermission(TrustPermissions.PermissionType.PLACE_BLOCKS);
+                    return hasBasicAccess && !canAccessContainers && !canBuild;
+                })
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toSet());
     }
 
     /**

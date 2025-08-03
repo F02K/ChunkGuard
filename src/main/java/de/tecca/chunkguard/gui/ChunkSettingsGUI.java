@@ -20,7 +20,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * GUI for managing chunk settings with click debouncing
+ * GUI for managing chunk settings with improved click handling
  */
 public class ChunkSettingsGUI implements Listener {
 
@@ -29,7 +29,7 @@ public class ChunkSettingsGUI implements Listener {
 
     // Click debouncing - prevent rapid clicks
     private final Map<UUID, Long> lastClickTime = new HashMap<>();
-    private static final long CLICK_COOLDOWN = 500; // 500ms cooldown
+    private static final long CLICK_COOLDOWN = 250; // Reduced cooldown
 
     public ChunkSettingsGUI(ChunkGuardPlugin plugin) {
         this.plugin = plugin;
@@ -45,98 +45,153 @@ public class ChunkSettingsGUI implements Listener {
             return;
         }
 
-        Inventory gui = Bukkit.createInventory(null, 27, ChatColor.DARK_GREEN + "Chunk Settings");
+        Inventory gui = createChunkSettingsGUI(chunkData);
 
         // Store the chunk data for this player
         openGUIs.put(player.getUniqueId(), chunkData);
 
+        player.openInventory(gui);
+    }
+
+    /**
+     * Creates the chunk settings GUI inventory
+     */
+    private Inventory createChunkSettingsGUI(ChunkData chunkData) {
+        Inventory gui = Bukkit.createInventory(null, 27, ChatColor.DARK_GREEN + "Chunk Settings");
+
         // PvP Setting (Slot 10)
-        ItemStack pvpItem = new ItemStack(chunkData.isPvpEnabled() ? Material.DIAMOND_SWORD : Material.WOODEN_SWORD);
-        ItemMeta pvpMeta = pvpItem.getItemMeta();
-        pvpMeta.setDisplayName(ChatColor.YELLOW + "PvP Settings");
-        pvpMeta.setLore(Arrays.asList(
+        gui.setItem(10, createPvPItem(chunkData));
+
+        // Explosions Setting (Slot 11)
+        gui.setItem(11, createExplosionsItem(chunkData));
+
+        // Fire Spread Setting (Slot 12)
+        gui.setItem(12, createFireSpreadItem(chunkData));
+
+        // Mob Spawning Setting (Slot 13)
+        gui.setItem(13, createMobSpawningItem(chunkData));
+
+        // Trust Management (Slot 14)
+        gui.setItem(14, createTrustManagementItem());
+
+        // Chunk Information (Slot 16)
+        gui.setItem(16, createChunkInfoItem(chunkData));
+
+        // Close Button (Slot 22)
+        gui.setItem(22, createCloseItem());
+
+        return gui;
+    }
+
+    private ItemStack createPvPItem(ChunkData chunkData) {
+        Material material = chunkData.isPvpEnabled() ? Material.DIAMOND_SWORD : Material.WOODEN_SWORD;
+        ItemStack item = new ItemStack(material);
+        ItemMeta meta = item.getItemMeta();
+
+        meta.setDisplayName(ChatColor.YELLOW + "PvP Settings");
+        meta.setLore(Arrays.asList(
                 ChatColor.GRAY + "Current: " + (chunkData.isPvpEnabled() ?
                         ChatColor.RED + "Enabled" : ChatColor.GREEN + "Disabled"),
                 "",
                 ChatColor.AQUA + "Click to toggle PvP in this chunk"
         ));
-        pvpItem.setItemMeta(pvpMeta);
-        gui.setItem(10, pvpItem);
 
-        // Explosions Setting (Slot 11)
-        ItemStack explosionItem = new ItemStack(chunkData.isExplosionsEnabled() ? Material.TNT : Material.COBBLESTONE);
-        ItemMeta explosionMeta = explosionItem.getItemMeta();
-        explosionMeta.setDisplayName(ChatColor.YELLOW + "Explosion Settings");
-        explosionMeta.setLore(Arrays.asList(
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private ItemStack createExplosionsItem(ChunkData chunkData) {
+        Material material = chunkData.isExplosionsEnabled() ? Material.TNT : Material.COBBLESTONE;
+        ItemStack item = new ItemStack(material);
+        ItemMeta meta = item.getItemMeta();
+
+        meta.setDisplayName(ChatColor.YELLOW + "Explosion Settings");
+        meta.setLore(Arrays.asList(
                 ChatColor.GRAY + "Current: " + (chunkData.isExplosionsEnabled() ?
                         ChatColor.RED + "Enabled" : ChatColor.GREEN + "Disabled"),
                 "",
                 ChatColor.AQUA + "Click to toggle explosions in this chunk"
         ));
-        explosionItem.setItemMeta(explosionMeta);
-        gui.setItem(11, explosionItem);
 
-        // Fire Spread Setting (Slot 12)
-        ItemStack fireItem = new ItemStack(chunkData.isFireSpreadEnabled() ? Material.FIRE_CHARGE : Material.WATER_BUCKET);
-        ItemMeta fireMeta = fireItem.getItemMeta();
-        fireMeta.setDisplayName(ChatColor.YELLOW + "Fire Spread Settings");
-        fireMeta.setLore(Arrays.asList(
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private ItemStack createFireSpreadItem(ChunkData chunkData) {
+        Material material = chunkData.isFireSpreadEnabled() ? Material.FIRE_CHARGE : Material.WATER_BUCKET;
+        ItemStack item = new ItemStack(material);
+        ItemMeta meta = item.getItemMeta();
+
+        meta.setDisplayName(ChatColor.YELLOW + "Fire Spread Settings");
+        meta.setLore(Arrays.asList(
                 ChatColor.GRAY + "Current: " + (chunkData.isFireSpreadEnabled() ?
                         ChatColor.RED + "Enabled" : ChatColor.GREEN + "Disabled"),
                 "",
                 ChatColor.AQUA + "Click to toggle fire spread in this chunk"
         ));
-        fireItem.setItemMeta(fireMeta);
-        gui.setItem(12, fireItem);
 
-        // Mob Spawning Setting (Slot 13)
-        ItemStack mobItem = new ItemStack(chunkData.isMobSpawningEnabled() ? Material.ZOMBIE_HEAD : Material.BARRIER);
-        ItemMeta mobMeta = mobItem.getItemMeta();
-        mobMeta.setDisplayName(ChatColor.YELLOW + "Mob Spawning Settings");
-        mobMeta.setLore(Arrays.asList(
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private ItemStack createMobSpawningItem(ChunkData chunkData) {
+        Material material = chunkData.isMobSpawningEnabled() ? Material.ZOMBIE_HEAD : Material.BARRIER;
+        ItemStack item = new ItemStack(material);
+        ItemMeta meta = item.getItemMeta();
+
+        meta.setDisplayName(ChatColor.YELLOW + "Mob Spawning Settings");
+        meta.setLore(Arrays.asList(
                 ChatColor.GRAY + "Current: " + (chunkData.isMobSpawningEnabled() ?
                         ChatColor.GREEN + "Enabled" : ChatColor.RED + "Disabled"),
                 "",
                 ChatColor.AQUA + "Click to toggle mob spawning in this chunk"
         ));
-        mobItem.setItemMeta(mobMeta);
-        gui.setItem(13, mobItem);
 
-        // Trust Management (Slot 14)
-        ItemStack trustItem = new ItemStack(Material.PLAYER_HEAD);
-        ItemMeta trustMeta = trustItem.getItemMeta();
-        trustMeta.setDisplayName(ChatColor.YELLOW + "Trust Management");
-        trustMeta.setLore(Arrays.asList(
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private ItemStack createTrustManagementItem() {
+        ItemStack item = new ItemStack(Material.PLAYER_HEAD);
+        ItemMeta meta = item.getItemMeta();
+
+        meta.setDisplayName(ChatColor.YELLOW + "Trust Management");
+        meta.setLore(Arrays.asList(
                 ChatColor.GRAY + "Manage trusted players",
                 "",
                 ChatColor.AQUA + "Click to open trust management"
         ));
-        trustItem.setItemMeta(trustMeta);
-        gui.setItem(14, trustItem);
 
-        // Chunk Information (Slot 16)
-        ItemStack infoItem = new ItemStack(Material.BOOK);
-        ItemMeta infoMeta = infoItem.getItemMeta();
-        infoMeta.setDisplayName(ChatColor.YELLOW + "Chunk Information");
-        infoMeta.setLore(Arrays.asList(
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private ItemStack createChunkInfoItem(ChunkData chunkData) {
+        ItemStack item = new ItemStack(Material.BOOK);
+        ItemMeta meta = item.getItemMeta();
+
+        meta.setDisplayName(ChatColor.YELLOW + "Chunk Information");
+        meta.setLore(Arrays.asList(
                 ChatColor.GRAY + "Coordinates: " + chunkData.getChunkX() + ", " + chunkData.getChunkZ(),
                 ChatColor.GRAY + "World: " + chunkData.getWorldName(),
                 ChatColor.GRAY + "Claimed: " + chunkData.getClaimedAt().toString().substring(0, 19),
                 "",
                 ChatColor.AQUA + "Click for detailed information"
         ));
-        infoItem.setItemMeta(infoMeta);
-        gui.setItem(16, infoItem);
 
-        // Close Button (Slot 22)
-        ItemStack closeItem = new ItemStack(Material.BARRIER);
-        ItemMeta closeMeta = closeItem.getItemMeta();
-        closeMeta.setDisplayName(ChatColor.RED + "Close");
-        closeMeta.setLore(Arrays.asList(ChatColor.GRAY + "Close this menu"));
-        closeItem.setItemMeta(closeMeta);
-        gui.setItem(22, closeItem);
+        item.setItemMeta(meta);
+        return item;
+    }
 
-        player.openInventory(gui);
+    private ItemStack createCloseItem() {
+        ItemStack item = new ItemStack(Material.BARRIER);
+        ItemMeta meta = item.getItemMeta();
+
+        meta.setDisplayName(ChatColor.RED + "Close");
+        meta.setLore(Arrays.asList(ChatColor.GRAY + "Close this menu"));
+
+        item.setItemMeta(meta);
+        return item;
     }
 
     @EventHandler
@@ -172,18 +227,11 @@ public class ChunkSettingsGUI implements Listener {
 
         int slot = event.getSlot();
 
-        // Delay the actual action slightly to prevent double-processing
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            handleDelayedClick(player, chunkData, slot);
-        }, 1L); // 1 tick delay
+        // Handle click immediately without delay
+        handleClick(player, chunkData, slot);
     }
 
-    private void handleDelayedClick(Player player, ChunkData chunkData, int slot) {
-        // Double-check that the player still has the GUI open
-        if (!openGUIs.containsKey(player.getUniqueId())) {
-            return;
-        }
-
+    private void handleClick(Player player, ChunkData chunkData, int slot) {
         switch (slot) {
             case 10: // PvP Toggle
                 togglePvP(player, chunkData);
@@ -234,12 +282,8 @@ public class ChunkSettingsGUI implements Listener {
         String status = chunkData.isPvpEnabled() ? ChatColor.RED + "enabled" : ChatColor.GREEN + "disabled";
         player.sendMessage(ChatColor.YELLOW + "PvP " + status + ChatColor.YELLOW + " in this chunk!");
 
-        // Refresh the GUI after a short delay to prevent rapid clicking
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (openGUIs.containsKey(player.getUniqueId())) {
-                openChunkSettings(player, chunkData);
-            }
-        }, 3L);
+        // Update the specific item in the GUI instead of recreating the whole GUI
+        refreshGUI(player, chunkData);
     }
 
     private void toggleExplosions(Player player, ChunkData chunkData) {
@@ -249,12 +293,7 @@ public class ChunkSettingsGUI implements Listener {
         String status = chunkData.isExplosionsEnabled() ? ChatColor.RED + "enabled" : ChatColor.GREEN + "disabled";
         player.sendMessage(ChatColor.YELLOW + "Explosions " + status + ChatColor.YELLOW + " in this chunk!");
 
-        // Refresh the GUI after a short delay
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (openGUIs.containsKey(player.getUniqueId())) {
-                openChunkSettings(player, chunkData);
-            }
-        }, 3L);
+        refreshGUI(player, chunkData);
     }
 
     private void toggleFireSpread(Player player, ChunkData chunkData) {
@@ -264,12 +303,7 @@ public class ChunkSettingsGUI implements Listener {
         String status = chunkData.isFireSpreadEnabled() ? ChatColor.RED + "enabled" : ChatColor.GREEN + "disabled";
         player.sendMessage(ChatColor.YELLOW + "Fire spread " + status + ChatColor.YELLOW + " in this chunk!");
 
-        // Refresh the GUI after a short delay
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (openGUIs.containsKey(player.getUniqueId())) {
-                openChunkSettings(player, chunkData);
-            }
-        }, 3L);
+        refreshGUI(player, chunkData);
     }
 
     private void toggleMobSpawning(Player player, ChunkData chunkData) {
@@ -279,12 +313,24 @@ public class ChunkSettingsGUI implements Listener {
         String status = chunkData.isMobSpawningEnabled() ? ChatColor.GREEN + "enabled" : ChatColor.RED + "disabled";
         player.sendMessage(ChatColor.YELLOW + "Mob spawning " + status + ChatColor.YELLOW + " in this chunk!");
 
-        // Refresh the GUI after a short delay
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (openGUIs.containsKey(player.getUniqueId())) {
-                openChunkSettings(player, chunkData);
-            }
-        }, 3L);
+        refreshGUI(player, chunkData);
+    }
+
+    /**
+     * Refreshes the GUI items without closing and reopening
+     */
+    private void refreshGUI(Player player, ChunkData chunkData) {
+        Inventory inventory = player.getOpenInventory().getTopInventory();
+
+        // Update only the items that could have changed
+        inventory.setItem(10, createPvPItem(chunkData));
+        inventory.setItem(11, createExplosionsItem(chunkData));
+        inventory.setItem(12, createFireSpreadItem(chunkData));
+        inventory.setItem(13, createMobSpawningItem(chunkData));
+        inventory.setItem(16, createChunkInfoItem(chunkData)); // Update info in case last accessed changed
+
+        // Force inventory update
+        player.updateInventory();
     }
 
     private void openTrustManagement(Player player, ChunkData chunkData) {
@@ -309,7 +355,7 @@ public class ChunkSettingsGUI implements Listener {
         player.sendMessage(ChatColor.YELLOW + "• Fire Spread: " + (chunkData.isFireSpreadEnabled() ? ChatColor.RED + "Enabled" : ChatColor.GREEN + "Disabled"));
         player.sendMessage(ChatColor.YELLOW + "• Mob Spawning: " + (chunkData.isMobSpawningEnabled() ? ChatColor.GREEN + "Enabled" : ChatColor.RED + "Disabled"));
 
-        int totalTrusted = chunkData.getTrustedBuilders().size() +
+        int totalTrusted = chunkData.getTrustedPlayerCount() +
                 chunkData.getTrustedContainers().size() +
                 chunkData.getTrustedAccessors().size();
         player.sendMessage(ChatColor.YELLOW + "• Trusted Players: " + ChatColor.WHITE + totalTrusted);
@@ -317,6 +363,8 @@ public class ChunkSettingsGUI implements Listener {
 
     private void updateChunkData(ChunkData chunkData) {
         try {
+            // Update last accessed time
+            chunkData.updateLastAccessed();
             plugin.getDatabaseManager().updateChunk(chunkData);
         } catch (Exception e) {
             plugin.getLogger().severe("Failed to update chunk data: " + e.getMessage());
@@ -328,5 +376,6 @@ public class ChunkSettingsGUI implements Listener {
      */
     public void cleanup(Player player) {
         openGUIs.remove(player.getUniqueId());
+        lastClickTime.remove(player.getUniqueId());
     }
 }

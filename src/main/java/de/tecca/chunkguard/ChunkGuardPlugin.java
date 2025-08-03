@@ -1,10 +1,6 @@
 package de.tecca.chunkguard;
 
-import de.tecca.chunkguard.commands.ChunkGuardCommand;
-import de.tecca.chunkguard.commands.ClaimCommand;
-import de.tecca.chunkguard.commands.UnclaimCommand;
-import de.tecca.chunkguard.commands.ClaimInfoCommand;
-import de.tecca.chunkguard.commands.ChunkGUICommand;
+import de.tecca.chunkguard.commands.*;
 import de.tecca.chunkguard.listeners.PlayerListener;
 import de.tecca.chunkguard.listeners.ProtectionListener;
 import de.tecca.chunkguard.managers.ChunkManager;
@@ -189,6 +185,9 @@ public class ChunkGuardPlugin extends JavaPlugin {
         getCommand("unclaim").setExecutor(new UnclaimCommand(this));
         getCommand("claiminfo").setExecutor(new ClaimInfoCommand(this));
         getCommand("chunkgui").setExecutor(new ChunkGUICommand(this));
+
+        // Admin command
+        getCommand("cgadmin").setExecutor(new AdminCommand(this));
     }
 
     private void registerListeners() {
