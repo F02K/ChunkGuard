@@ -1,0 +1,73 @@
+name: ChunkGuard
+version: 1.0.0
+main: de.tecca.chunkguard.ChunkGuardPlugin
+api-version: '1.18'
+description: Modern chunk-based land protection with LuckPerms integration
+author: YourName
+website: https://github.com/yourusername/chunkguard
+
+depend: []
+softdepend: [Vault, LuckPerms, PlaceholderAPI]
+
+commands:
+  chunkguard:
+    description: Main ChunkGuard command
+    aliases: [cg, claim]
+    usage: /<command> [subcommand]
+    permission: chunkguard.use
+
+  claim:
+    description: Claim the current chunk
+    usage: /claim
+    permission: chunkguard.claim
+
+  unclaim:
+    description: Unclaim the current chunk
+    usage: /unclaim
+    permission: chunkguard.unclaim
+
+  claiminfo:
+    description: Get information about the current chunk
+    usage: /claiminfo
+    permission: chunkguard.info
+
+  chunkgui:
+    description: Open chunk settings GUI
+    aliases: [cgui, claimsettings]
+    usage: /chunkgui
+    permission: chunkguard.use
+
+permissions:
+  chunkguard.*:
+    description: All ChunkGuard permissions
+    children:
+      chunkguard.use: true
+      chunkguard.claim: true
+      chunkguard.unclaim: true
+      chunkguard.info: true
+      chunkguard.admin: true
+      chunkguard.bypass: true
+
+  chunkguard.use:
+    description: Basic ChunkGuard usage
+    default: true
+
+  chunkguard.claim:
+    description: Allows claiming chunks
+    default: true
+
+  chunkguard.unclaim:
+    description: Allows unclaiming own chunks
+    default: true
+
+  chunkguard.info:
+    description: Allows viewing chunk information
+    default: true
+
+  chunkguard.admin:
+    description: Administrative commands
+    default: op
+
+  chunkguard.bypass:
+    description: Bypass all protection
+    default: op

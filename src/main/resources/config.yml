@@ -1,0 +1,129 @@
+# ChunkGuard Configuration File
+# Modern chunk-based land protection with LuckPerms integration
+
+# Claim Settings
+claims:
+  # Default number of chunks a player can claim
+  default-limit: 10
+
+  # Default cost to claim a chunk (requires Vault and economy plugin)
+  default-cost: 100.0
+
+# Visual Settings
+visual:
+  # Particle border effects
+  particles:
+    # Enable particle borders when near claimed chunks
+    enabled: true
+
+    # Distance from chunk edge to show particles (in blocks)
+    range: 5
+
+  # ActionBar messages
+  actionbar:
+    # Enable actionbar messages when entering/leaving claims
+    enabled: true
+
+# Database Settings
+database:
+  # Database type: "sqlite" or "mysql"
+  type: "sqlite"
+
+  # SQLite settings (used when type is "sqlite")
+  sqlite:
+    # Database file name (stored in plugin folder)
+    file: "chunks.db"
+
+  # MySQL settings (used when type is "mysql")
+  mysql:
+    host: "localhost"
+    port: 3306
+    database: "chunkguard"
+    username: "root"
+    password: ""
+
+# Messages
+messages:
+  # Claim command messages
+  claim-success: "&aChunk claimed successfully!"
+  claim-failed: "&cFailed to claim chunk!"
+  already-claimed: "&cThis chunk is already claimed!"
+  claim-limit-reached: "&cYou have reached your claim limit!"
+  insufficient-funds: "&cYou don't have enough money to claim this chunk!"
+
+  # Unclaim command messages
+  unclaim-success: "&aChunk unclaimed successfully!"
+  not-claimed: "&cThis chunk is not claimed!"
+  not-owner: "&cYou don't own this chunk!"
+
+  # Chunk information messages
+  chunk-info:
+    owner: "&6Owner: &e%owner%"
+    claimed-at: "&6Claimed: &e%date%"
+
+  # ActionBar messages (shown when entering/leaving claims)
+  actionbar:
+    entering-claim: "&6Entering &e%owner%'s &6claim"
+    leaving-claim: "&6Leaving &e%owner%'s &6claim"
+
+# Protection Settings
+protection:
+  # Default chunk settings for new claims
+  defaults:
+    # Allow PvP in claimed chunks by default
+    pvp-enabled: false
+
+    # Allow mob spawning in claimed chunks by default
+    mob-spawning-enabled: true
+
+    # Allow explosions in claimed chunks by default
+    explosions-enabled: false
+
+    # Allow fire spread in claimed chunks by default
+    fire-spread-enabled: false
+
+# Integration Settings
+integrations:
+  # LuckPerms integration settings
+  luckperms:
+    # Automatically sync chunk permissions with LuckPerms
+    auto-sync: true
+
+  # Vault economy integration settings
+  vault:
+    # Enable economy features (requires Vault and economy plugin)
+    enabled: true
+
+  # PlaceholderAPI integration settings
+  placeholderapi:
+    # Enable placeholder support
+    enabled: true
+
+# Performance Settings
+performance:
+  # Cache settings for better performance
+  cache:
+    # How long to cache chunk data in memory (seconds)
+    chunk-cache-time: 300
+
+    # Maximum number of chunks to keep in cache
+    max-cached-chunks: 1000
+
+  # Database connection pool settings
+  database-pool:
+    # Maximum number of database connections
+    max-connections: 10
+
+    # Connection timeout in milliseconds
+    connection-timeout: 30000
+
+# Debug Settings (for development and troubleshooting)
+debug:
+  # Enable debug logging
+  enabled: false
+
+  # Log database queries
+  log-database: false
+
+  # Log permission checks
+  log-permissions: false
